@@ -461,13 +461,14 @@ data Search = Search { queryBody       :: Maybe Query
                      , scriptFields    :: Maybe ScriptFields
                      , source          :: Maybe Source
                      , suggestBody     :: Maybe Suggest -- ^ Only one Suggestion request / response per Search is supported.
+                     , minScore        :: Score
                      } deriving (Eq, Show)
 
 
 instance ToJSON Search where
   toJSON (Search mquery sFilter sort searchAggs
           highlight sTrackSortScores sFrom sSize _ sAfter sFields
-          sScriptFields sSource sSuggest) =
+          sScriptFields sSource sSuggest sMinScore) =
     omitNulls [ "query"         .= query'
               , "sort"          .= sort
               , "aggregations"  .= searchAggs
@@ -479,7 +480,8 @@ instance ToJSON Search where
               , "fields"        .= sFields
               , "script_fields" .= sScriptFields
               , "_source"       .= sSource
-              , "suggest"       .= sSuggest]
+              , "suggest"       .= sSuggest
+              , "min_score"     .= sMinScore]
 
     where query' = case sFilter of
                     Nothing -> mquery
@@ -660,4 +662,3 @@ instance FromJSON GetTemplateScript where
       )
       script
   parseJSON _          = empty
-
