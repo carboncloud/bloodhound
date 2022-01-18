@@ -1382,7 +1382,8 @@ mkSearch query filter =
       scriptFields = Nothing,
       source = Nothing,
       suggestBody = Nothing,
-      pointInTime = Nothing
+      pointInTime = Nothing,
+      minScore = Nothing
     }
 
 -- | 'mkAggregateSearch' is a helper function that defaults everything in a 'Search' except for
@@ -1409,7 +1410,8 @@ mkAggregateSearch query mkSearchAggs =
       scriptFields = Nothing,
       source = Nothing,
       suggestBody = Nothing,
-      pointInTime = Nothing
+      pointInTime = Nothing,
+      minScore = Nothing
     }
 
 -- | 'mkHighlightSearch' is a helper function that defaults everything in a 'Search' except for
@@ -1435,7 +1437,8 @@ mkHighlightSearch query searchHighlights =
       scriptFields = Nothing,
       source = Nothing,
       suggestBody = Nothing,
-      pointInTime = Nothing
+      pointInTime = Nothing,
+      minScore = Nothing
     }
 
 -- | 'mkSearchTemplate' is a helper function for defaulting additional fields of a 'SearchTemplate'

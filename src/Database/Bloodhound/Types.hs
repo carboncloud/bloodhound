@@ -471,7 +471,8 @@ data Search = Search
     source :: Maybe Source,
     -- | Only one Suggestion request / response per Search is supported.
     suggestBody :: Maybe Suggest,
-    pointInTime :: Maybe PointInTime
+    pointInTime :: Maybe PointInTime,
+    minScore :: Score
   }
   deriving (Eq, Show)
 
@@ -493,6 +494,7 @@ instance ToJSON Search where
         sSource
         sSuggest
         pPointInTime
+        sMinScore
       ) =
       omitNulls
         [ "query" .= query',
@@ -507,7 +509,8 @@ instance ToJSON Search where
           "script_fields" .= sScriptFields,
           "_source" .= sSource,
           "suggest" .= sSuggest,
-          "pit" .= pPointInTime
+          "pit" .= pPointInTime,
+          "min_score" .= sMinScore
         ]
       where
         query' = case sFilter of
@@ -704,4 +707,4 @@ instance FromJSON GetTemplateScript where
             <*> v .: "found"
       )
       script
-  parseJSON _ = empty
+  parseJSON _          = empty

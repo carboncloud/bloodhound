@@ -188,7 +188,8 @@ main = hspec $ do
                   scriptFields = Nothing,
                   source = Nothing,
                   suggestBody = Nothing,
-                  pointInTime = Nothing
+                  pointInTime = Nothing,
+                  minScore = Nothing
                 }
         result <- searchTweets search
         let myTweet = grabFirst result
