@@ -461,6 +461,7 @@ data Search = Search { queryBody       :: Maybe Query
                      , scriptFields    :: Maybe ScriptFields
                      , source          :: Maybe Source
                      , suggestBody     :: Maybe Suggest -- ^ Only one Suggestion request / response per Search is supported.
+                     , postFilter      :: Maybe Filter
                      , minScore        :: Score
                      } deriving (Eq, Show)
 
@@ -468,7 +469,7 @@ data Search = Search { queryBody       :: Maybe Query
 instance ToJSON Search where
   toJSON (Search mquery sFilter sort searchAggs
           highlight sTrackSortScores sFrom sSize _ sAfter sFields
-          sScriptFields sSource sSuggest sMinScore) =
+          sScriptFields sSource sSuggest sPostFilter sMinScore) =
     omitNulls [ "query"         .= query'
               , "sort"          .= sort
               , "aggregations"  .= searchAggs
@@ -481,6 +482,7 @@ instance ToJSON Search where
               , "script_fields" .= sScriptFields
               , "_source"       .= sSource
               , "suggest"       .= sSuggest
+              , "post_filter"   .= sPostFilter
               , "min_score"     .= sMinScore]
 
     where query' = case sFilter of
