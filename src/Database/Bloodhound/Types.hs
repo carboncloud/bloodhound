@@ -472,7 +472,8 @@ data Search = Search
     -- | Only one Suggestion request / response per Search is supported.
     suggestBody :: Maybe Suggest,
     pointInTime :: Maybe PointInTime,
-    minScore :: Score
+    minScore :: Score,
+    postFilter :: Maybe Filter
   }
   deriving (Eq, Show)
 
@@ -495,6 +496,7 @@ instance ToJSON Search where
         sSuggest
         pPointInTime
         sMinScore
+        sPostFilter
       ) =
       omitNulls
         [ "query" .= query',
@@ -510,7 +512,8 @@ instance ToJSON Search where
           "_source" .= sSource,
           "suggest" .= sSuggest,
           "pit" .= pPointInTime,
-          "min_score" .= sMinScore
+          "min_score" .= sMinScore,
+          "post_filter" .= sPostFilter
         ]
       where
         query' = case sFilter of
