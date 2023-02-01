@@ -200,11 +200,11 @@ instance FromJSON ScriptParams where
   parseJSON _ = fail "error parsing ScriptParams"
 
 instance ToJSON FieldValueFactor where
-  toJSON (FieldValueFactor field factor modifier missing) =
+  toJSON (FieldValueFactor fvfField factor modifier missing) =
     omitNulls base
     where
       base =
-        [ "field" .= field,
+        [ "field" .= fvfField,
           "factor" .= factor,
           "modifier" .= modifier,
           "missing" .= missing

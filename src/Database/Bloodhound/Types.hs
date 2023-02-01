@@ -104,6 +104,7 @@ module Database.Bloodhound.Types
     Search (..),
     SearchType (..),
     SearchResult (..),
+    Collapse (..),
     ScrollId (..),
     HitsTotalRelation (..),
     HitsTotal (..),
@@ -440,6 +441,7 @@ import Database.Bloodhound.Internal.Analysis
 import Database.Bloodhound.Internal.Client
 import Database.Bloodhound.Internal.Client.BHRequest
 import Database.Bloodhound.Internal.Client.Doc
+import Database.Bloodhound.Internal.Collapse
 import Database.Bloodhound.Internal.Count
 import Database.Bloodhound.Internal.Highlight
 import Database.Bloodhound.Internal.Newtypes
@@ -473,7 +475,8 @@ data Search = Search
     suggestBody :: Maybe Suggest,
     pointInTime :: Maybe PointInTime,
     minScore :: Score,
-    postFilter :: Maybe Filter
+    postFilter :: Maybe Filter,
+    collapse :: Maybe Collapse
   }
   deriving (Eq, Show)
 
@@ -497,6 +500,7 @@ instance ToJSON Search where
         pPointInTime
         sMinScore
         sPostFilter
+        sCollapse
       ) =
       omitNulls
         [ "query" .= query',
@@ -513,7 +517,8 @@ instance ToJSON Search where
           "suggest" .= sSuggest,
           "pit" .= pPointInTime,
           "min_score" .= sMinScore,
-          "post_filter" .= sPostFilter
+          "post_filter" .= sPostFilter,
+          "collapse" .= sCollapse
         ]
       where
         query' = case sFilter of
