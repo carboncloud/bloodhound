@@ -1455,6 +1455,14 @@ newtype GreaterThanD = GreaterThanD UTCTime deriving (Eq, Show, Generic)
 
 newtype GreaterThanEqD = GreaterThanEqD UTCTime deriving (Eq, Show, Generic)
 
+newtype LessThanT = LessThanT Text deriving (Eq, Show, Generic)
+
+newtype LessThanEqT = LessThanEqT Text deriving (Eq, Show, Generic)
+
+newtype GreaterThanT = GreaterThanT Text deriving (Eq, Show, Generic)
+
+newtype GreaterThanEqT = GreaterThanEqT Text deriving (Eq, Show, Generic)
+
 data RangeValue
   = RangeDateLte LessThanEqD
   | RangeDateLt LessThanD
@@ -1472,6 +1480,14 @@ data RangeValue
   | RangeDoubleGteLte GreaterThanEq LessThanEq
   | RangeDoubleGteLt GreaterThanEq LessThan
   | RangeDoubleGtLte GreaterThan LessThanEq
+  | RangeTextLte LessThanEqT
+  | RangeTextLt LessThanT
+  | RangeTextGte GreaterThanEqT
+  | RangeTextGt GreaterThanT
+  | RangeTextGtLt GreaterThanT LessThanT
+  | RangeTextGteLte GreaterThanEqT LessThanEqT
+  | RangeTextGteLt GreaterThanEqT LessThanT
+  | RangeTextGtLte GreaterThanT LessThanEqT
   deriving (Eq, Show, Generic)
 
 parseRangeValue ::
@@ -1591,6 +1607,14 @@ rangeValueToPair rv = case rv of
   RangeDoubleGtLte (GreaterThan l) (LessThanEq g) -> ["gt" .= l, "lte" .= g]
   RangeDoubleGteLt (GreaterThanEq l) (LessThan g) -> ["gte" .= l, "lt" .= g]
   RangeDoubleGtLt (GreaterThan l) (LessThan g) -> ["gt" .= l, "lt" .= g]
+  RangeTextLte (LessThanEqT t) -> ["lte" .= t]
+  RangeTextGte (GreaterThanEqT t) -> ["gte" .= t]
+  RangeTextLt (LessThanT t) -> ["lt" .= t]
+  RangeTextGt (GreaterThanT t) -> ["gt" .= t]
+  RangeTextGteLte (GreaterThanEqT l) (LessThanEqT g) -> ["gte" .= l, "lte" .= g]
+  RangeTextGtLte (GreaterThanT l) (LessThanEqT g) -> ["gt" .= l, "lte" .= g]
+  RangeTextGteLt (GreaterThanEqT l) (LessThanT g) -> ["gte" .= l, "lt" .= g]
+  RangeTextGtLt (GreaterThanT l) (LessThanT g) -> ["gt" .= l, "lt" .= g]
 
 data Term = Term
   { termField :: Key,
