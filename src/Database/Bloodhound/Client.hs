@@ -856,7 +856,7 @@ indexDocument (IndexName indexName) cfg document (DocId docId) =
 
 data IndexedDocument = IndexedDocument
   { idxDocIndex :: Text,
-    idxDocType :: Text,
+    idxDocType :: Maybe Text,
     idxDocId :: Text,
     idxDocVersion :: Int,
     idxDocResult :: Text,
@@ -871,7 +871,7 @@ instance FromJSON IndexedDocument where
     withObject "IndexedDocument" $ \v ->
       IndexedDocument
         <$> v .: "_index"
-        <*> v .: "_type"
+        <*> v .:? "_type"
         <*> v .: "_id"
         <*> v .: "_version"
         <*> v .: "result"
