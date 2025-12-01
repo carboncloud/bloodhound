@@ -1,13 +1,15 @@
-{-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
 
 -- |
 -- Module : Database.Bloodhound.Client
 -- Copyright : (C) 2014, 2018 Chris Allen
 -- License : BSD-style (see the file LICENSE)
--- Maintainer : Gautier DI FOLCO <gautier.difolco@gmail.com>
+-- Maintainer : Chris Allen <cma@bitemyapp.com>
 -- Stability : provisional
 -- Portability : GHC
 --
@@ -15,19 +17,27 @@
 module Database.Bloodhound.Internal.Client.BHRequest
   ( -- * Request
     BHRequest (..),
+    StatusIndependant,
+    StatusDependant,
     mkFullRequest,
     mkSimpleRequest,
+    ParsedEsResponse,
+    ParseBHResponse (..),
     Server (..),
     Endpoint (..),
     mkEndpoint,
     withQueries,
     getEndpoint,
+    withBHResponse,
+    withBHResponse_,
+    withBHResponseParsedEsResponse,
+    keepBHResponse,
+    joinBHResponse,
 
     -- * Response
     BHResponse (..),
 
     -- * Response interpretation
-    ParsedEsResponse,
     decodeResponse,
     eitherDecodeResponse,
     parseEsResponse,
@@ -46,6 +56,7 @@ module Database.Bloodhound.Internal.Client.BHRequest
     -- * Common results
     Acknowledged (..),
     Accepted (..),
+    IgnoredBody (..),
   )
 where
 
@@ -54,12 +65,14 @@ import Control.Applicative as A
 import Control.Monad
 import Control.Monad.Catch
 import Data.Aeson
+import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BL
 import Data.Ix
 import Data.Monoid
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
+import Data.Typeable
 import Database.Bloodhound.Internal.Client.Doc
 import GHC.Exts
 import Network.HTTP.Client
@@ -104,34 +117,133 @@ withQueries endpoint queries = endpoint {getRawEndpointQueries = getRawEndpointQ
 
 -- | 'Request' upon Elasticsearch's server.
 --
+-- @parsingContext@ is a phantom type for the expected status-dependancy
 -- @responseBody@ is a phantom type for the expected result
-data BHRequest responseBody = BHRequest
+data BHRequest parsingContext responseBody = BHRequest
   { bhRequestMethod :: NHTM.Method,
     bhRequestEndpoint :: Endpoint,
-    bhRequestBody :: Maybe BL.ByteString
+    bhRequestBody :: Maybe BL.ByteString,
+    bhRequestQueryStrings :: [(BS.ByteString, Maybe BS.ByteString)],
+    bhRequestParser :: BHResponse parsingContext responseBody -> Either EsProtocolException (ParsedEsResponse responseBody)
   }
-  deriving stock (Eq, Show)
+
+instance Functor (BHRequest parsingContext) where
+  fmap f req =
+    req
+      { bhRequestParser =
+          \BHResponse {..} -> fmap (fmap f) $ bhRequestParser req $ BHResponse {..}
+      }
+
+-- | 'BHResponse' body-parsing does not depend on 'statusCode'
+data StatusIndependant
+
+-- | 'BHResponse' body-parsing may depend on 'statusCode'
+data StatusDependant
 
 -- | 'BHRequest' with a body
-mkFullRequest :: NHTM.Method -> Endpoint -> BL.ByteString -> BHRequest body
+mkFullRequest :: (ParseBHResponse parsingContext, FromJSON responseBody) => NHTM.Method -> Endpoint -> BL.ByteString -> BHRequest parsingContext responseBody
 mkFullRequest method' endpoint body =
   BHRequest
     { bhRequestMethod = method',
       bhRequestEndpoint = endpoint,
-      bhRequestBody = Just body
+      bhRequestBody = Just body,
+      bhRequestQueryStrings = [],
+      bhRequestParser = parseBHResponse
     }
 
 -- | 'BHRequest' without a body
-mkSimpleRequest :: NHTM.Method -> Endpoint -> BHRequest body
+mkSimpleRequest :: (ParseBHResponse parsingContext, FromJSON responseBody) => NHTM.Method -> Endpoint -> BHRequest parsingContext responseBody
 mkSimpleRequest method' endpoint =
   BHRequest
     { bhRequestMethod = method',
       bhRequestEndpoint = endpoint,
-      bhRequestBody = Nothing
+      bhRequestBody = Nothing,
+      bhRequestQueryStrings = [],
+      bhRequestParser = parseBHResponse
+    }
+
+class ParseBHResponse parsingContext where
+  parseBHResponse ::
+    (FromJSON a) =>
+    BHResponse parsingContext a ->
+    Either EsProtocolException (ParsedEsResponse a)
+
+instance ParseBHResponse StatusDependant where
+  parseBHResponse = parseEsResponse
+
+instance ParseBHResponse StatusIndependant where
+  parseBHResponse r =
+    return $
+      case eitherDecodeResponse r of
+        Right d -> Right d
+        Left e ->
+          Left $
+            EsError
+              { errorStatus = Just $ NHTS.statusCode (responseStatus $ getResponse r),
+                errorMessage = "Unable to parse body: " <> T.pack e
+              }
+
+-- | Work with the full 'BHResponse'
+withBHResponse ::
+  forall a parsingContext b.
+  (Either EsProtocolException (ParsedEsResponse a) -> BHResponse StatusDependant a -> b) ->
+  BHRequest parsingContext a ->
+  BHRequest StatusDependant b
+withBHResponse f req =
+  req
+    { bhRequestParser = \resp ->
+        liftResponse $ f (bhRequestParser req $ castResponse @_ @_ @parsingContext @a resp) $ castResponse @_ @_ @StatusDependant @a resp
+    }
+  where
+    liftResponse :: b -> Either EsProtocolException (ParsedEsResponse b)
+    liftResponse = return . return
+
+-- | Internal only
+castResponse :: BHResponse parsingContext0 responseBody0 -> BHResponse parsingContext1 responseBody1
+castResponse BHResponse {..} = BHResponse {..}
+
+-- | Work with the full 'BHResponse'
+withBHResponse_ ::
+  forall a parsingContext b.
+  (BHResponse StatusDependant a -> b) ->
+  BHRequest parsingContext a ->
+  BHRequest StatusDependant b
+withBHResponse_ f = withBHResponse $ const f
+
+-- | Enable working with 'ParsedEsResponse'
+withBHResponseParsedEsResponse ::
+  forall a parsingContext.
+  BHRequest parsingContext a ->
+  BHRequest StatusDependant (ParsedEsResponse a)
+withBHResponseParsedEsResponse req =
+  req
+    { bhRequestParser = \BHResponse {..} -> return <$> bhRequestParser req BHResponse {..}
+    }
+
+-- | Keep with the full 'BHResponse'
+keepBHResponse ::
+  forall a parsingContext.
+  BHRequest parsingContext a ->
+  BHRequest StatusDependant (BHResponse StatusDependant a, a)
+keepBHResponse = joinBHResponse . withBHResponse (\parsed resp -> fmap (fmap ((,) resp)) parsed)
+
+joinBHResponse ::
+  forall a parsingContext.
+  BHRequest parsingContext (Either EsProtocolException (ParsedEsResponse a)) ->
+  BHRequest parsingContext a
+joinBHResponse req =
+  req
+    { bhRequestParser = \resp ->
+        case bhRequestParser req $ castResponse resp of
+          Left e -> Left e
+          Right (Right a) -> a
+          Right (Left e) -> Right (Left e)
     }
 
 -- | Result of a 'BHRequest'
-newtype BHResponse body = BHResponse {getResponse :: Network.HTTP.Client.Response BL.ByteString}
+newtype BHResponse parsingContext body = BHResponse
+  { getResponse :: Network.HTTP.Client.Response BL.ByteString
+  }
   deriving stock (Show)
 
 -- | Result of a 'parseEsResponse'
@@ -144,11 +256,9 @@ type ParsedEsResponse a = Either EsError a
 -- thrown. If you encounter this, please report the full body it
 -- reports along with your Elasticsearch version.
 parseEsResponse ::
-  ( MonadThrow m,
-    FromJSON body
-  ) =>
-  BHResponse body ->
-  m (ParsedEsResponse body)
+  (FromJSON body) =>
+  BHResponse parsingContext body ->
+  Either EsProtocolException (ParsedEsResponse body)
 parseEsResponse response
   | isSuccess response = case eitherDecode body of
       Right a -> return (Right a)
@@ -162,7 +272,7 @@ parseEsResponse response
         Right e -> return (Left e)
         -- Failed to parse the error message.
         Left err -> explode ("Original error was: " <> originalError <> " Error parse failure was: " <> err)
-    explode errorMsg = throwM $ EsProtocolException (T.pack errorMsg) body
+    explode errorMsg = Left $ EsProtocolException (T.pack errorMsg) body
 
 -- | Parse 'BHResponse' with an arbitrary parser
 parseEsResponseWith ::
@@ -170,7 +280,7 @@ parseEsResponseWith ::
     FromJSON body
   ) =>
   (body -> Either String parsed) ->
-  BHResponse body ->
+  BHResponse parsingContext body ->
   m parsed
 parseEsResponseWith parser response =
   case eitherDecode body of
@@ -185,56 +295,58 @@ parseEsResponseWith parser response =
 
 -- | Helper around 'aeson' 'decode'
 decodeResponse ::
-  FromJSON a =>
-  BHResponse a ->
+  (FromJSON a) =>
+  BHResponse StatusIndependant a ->
   Maybe a
 decodeResponse = decode . responseBody . getResponse
 
 -- | Helper around 'aeson' 'eitherDecode'
 eitherDecodeResponse ::
-  FromJSON a =>
-  BHResponse a ->
+  (FromJSON a) =>
+  BHResponse StatusIndependant a ->
   Either String a
 eitherDecodeResponse = eitherDecode . responseBody . getResponse
 
 -- | Was there an optimistic concurrency control conflict when
--- indexing a document?
-isVersionConflict :: BHResponse a -> Bool
+-- indexing a document? (Check '409' status code.)
+isVersionConflict :: BHResponse parsingContext a -> Bool
 isVersionConflict = statusCheck (== 409)
 
 -- | Check '2xx' status codes
-isSuccess :: BHResponse a -> Bool
+isSuccess :: BHResponse parsingContext a -> Bool
 isSuccess = statusCodeIs (200, 299)
 
 -- | Check '201' status code
-isCreated :: BHResponse a -> Bool
+isCreated :: BHResponse parsingContext a -> Bool
 isCreated = statusCheck (== 201)
 
 -- | Check status code
-statusCheck :: (Int -> Bool) -> BHResponse a -> Bool
+statusCheck :: (Int -> Bool) -> BHResponse parsingContext a -> Bool
 statusCheck prd = prd . NHTS.statusCode . responseStatus . getResponse
 
 -- | Check status code in range
-statusCodeIs :: (Int, Int) -> BHResponse body -> Bool
+statusCodeIs :: (Int, Int) -> BHResponse parsingContext body -> Bool
 statusCodeIs r resp = inRange r $ NHTS.statusCode (responseStatus $ getResponse resp)
 
 -- | 'EsResult' describes the standard wrapper JSON document that you see in
---    successful Elasticsearch lookups or lookups that couldn't find the document.
+--   successful Elasticsearch lookups or lookups that couldn't find the document.
 data EsResult a = EsResult
   { _index :: Text,
     _type :: Maybe Text,
     _id :: Text,
     foundResult :: Maybe (EsResultFound a)
   }
-  deriving (Eq, Show)
+  deriving stock (Eq, Show)
+
+{-# DEPRECATED _type "deprecated since ElasticSearch 6.0" #-}
 
 -- | 'EsResultFound' contains the document and its metadata inside of an
---    'EsResult' when the document was successfully found.
+--   'EsResult' when the document was successfully found.
 data EsResultFound a = EsResultFound
   { _version :: DocVersion,
     _source :: a
   }
-  deriving (Eq, Show)
+  deriving stock (Eq, Show)
 
 instance (FromJSON a) => FromJSON (EsResult a) where
   parseJSON jsonVal@(Object v) = do
@@ -244,33 +356,64 @@ instance (FromJSON a) => FromJSON (EsResult a) where
         then parseJSON jsonVal
         else return Nothing
     EsResult
-      <$> v .: "_index"
-      <*> v .:? "_type"
-      <*> v .: "_id"
+      <$> v
+        .: "_index"
+      <*> v
+        .:? "_type"
+      <*> v
+        .: "_id"
       <*> pure fr
   parseJSON _ = empty
 
 instance (FromJSON a) => FromJSON (EsResultFound a) where
   parseJSON (Object v) =
     EsResultFound
-      <$> v .: "_version"
-      <*> v .: "_source"
+      <$> v
+        .: "_version"
+      <*> v
+        .: "_source"
   parseJSON _ = empty
 
 -- | 'EsError' is the generic type that will be returned when there was a
---    problem. If you can't parse the expected response, its a good idea to
---    try parsing this.
+--   problem. If you can't parse the expected response, its a good idea to
+--   try parsing this.
 data EsError = EsError
-  { errorStatus :: Int,
+  { errorStatus :: Maybe Int,
     errorMessage :: Text
   }
-  deriving (Eq, Show)
+  deriving stock (Eq, Show, Typeable)
+
+{-# DEPRECATED errorStatus "deprecated since ElasticSearch 6.0" #-}
+
+instance Exception EsError
+
+instance Semigroup EsError where
+  _ <> x = x
+
+instance Monoid EsError where
+  mempty = EsError Nothing "Monoid value, shouldn't happen"
 
 instance FromJSON EsError where
-  parseJSON (Object v) =
-    EsError
-      <$> v .: "status"
-      <*> (v .: "error" <|> (v .: "error" >>= (.: "reason")))
+  parseJSON (Object v) = p1 <|> p2 <|> p3
+    where
+      p1 =
+        EsError
+          <$> v .:? "status"
+          <*> v .: "error"
+      p2 =
+        EsError
+          <$> v .:? "status"
+          <*> (v .: "error" >>= (.: "reason"))
+      p3 = do
+        failures <- v .: "failures"
+        -- This is a bit imprecise: We're only using the first error, ignoring
+        -- all others.
+        case failures of
+          (failure : _) ->
+            EsError
+              <$> failure .:? "status"
+              <*> (failure .: "cause" >>= (.: "reason"))
+          [] -> fail "could not find field `failure`"
   parseJSON _ = empty
 
 -- | 'EsProtocolException' will be thrown if Bloodhound cannot parse a response
@@ -284,7 +427,7 @@ data EsProtocolException = EsProtocolException
   { esProtoExMessage :: !Text,
     esProtoExResponse :: !BL.ByteString
   }
-  deriving (Eq, Show)
+  deriving stock (Eq, Show)
 
 instance Exception EsProtocolException
 
@@ -303,3 +446,9 @@ instance FromJSON Accepted where
   parseJSON =
     withObject "Accepted" $
       fmap Accepted . (.: "accepted")
+
+data IgnoredBody = IgnoredBody
+  deriving stock (Eq, Show)
+
+instance FromJSON IgnoredBody where
+  parseJSON _ = return IgnoredBody

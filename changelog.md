@@ -1,3 +1,95 @@
+0.26.0.0
+========
+- @blackheaven
+  - breaking: change `DateHistogramAggregation.dateInterval` from `Interval` to `Maybe Interval`
+  - breaking: change `mkDateHistogram` signature from `FieldName -> Interval -> DateHistogramAggregation` to `FieldName -> DateHistogramAggregation`
+  - breaking: replace `TermsAggregation.term` from `Either Text Text` to `TermsAggregationTarget`
+  - breaking: change `mkTermsAggregation` signature from `Text -> TermsAggregation` to `FieldName -> TermsAggregation`
+  - feat: add `IntervalFixed` constructor to `Interval` sum type
+  - feat: add `bhResponseHook` to `BHEnv` for post-response debugging/processing
+  - feat: add `TermsAggregationTarget` sum type with `TermsAggregationTargetField` and `TermsAggregationTargetScript` constructors
+
+0.25.0.0
+========
+- @blackheaven
+  - add `BHRequest.bhRequestQueryStrings`
+  - fix: missing `getDocument` Client
+  - feat: add `Search.docvalueFields`
+  - feat: add `MedianAbsoluteDeviationAggregation` and `AvgAbsoluteDeviationAggregation`
+  - feat: extract `Missing` newtype
+  - feat: add lenses for `MedianAbsoluteDeviationAggregation` and `AvgAggregation`
+  - fix: rename old `Missing` and `SortMissingValue`
+  - feat: enhance `CardinalityAggregation` with `PrecisionThreshold` and `OnMissingValue` newtypes
+  - feat: enhance `DateHistogramAggregation` with new fields (`calendar_interval`, `fixed_interval`, `time_zone`, `offset`, `keyed`, `missing`, `min_doc_count`, `extended_bounds`)
+  - feat: add `CompositeAggregation` support
+
+0.24.0.0
+========
+- @blackheaven
+  - fix: remove `putMapping` deprecation
+  - strong type backend
+  - add dynamic backend operations
+  - complete/rename (uniformize) `optics` definitions
+
+0.23.0.1
+========
+- @arybczak
+  - add GHC 9.10/9.12 support
+- @supersvan
+  - chore: Improve Haddock of `isVersionConflict`
+  - chore: Add test to check response predicates
+- @blackheaven
+  - chore: migrate CI from `Haskell-CI` to `get-checked`
+  - fix: various bugfixes
+
+0.23.0.0
+========
+- @blackheaven
+  - Rework `MonadBH` to be function oriented (instead of implementation oriented)
+  - `Client`: parsing is done directly
+  - Create and expose `Database.Bloodhound.Requests` for low-level operations
+  - Fix payload parsing issues and types there and there
+  - Import @wireapp fork
+  - Support OpenSearch 1.3.12 / 2.9.0
+  - Use `versions` instead of `semver` (`VersionNumber` wraps `Data.Versions.Version`)
+  - Drop `VMVersion` in favor of `VersionNumber`
+  - `EsError.errorStatus` became a `Maybe` and is deprecated
+  - `EsResult._type` is deprecated
+  - `IndexedDocumentidxDocType` is optional and deprecated
+  - Module reorganization (avoid exposing `Internal` and split ElasticSearch/OpenSearch)
+  - Rename `ResultsShard`'s shards to `srShards`
+  - Upgrade to `Cabal` `3.0`
+  - Add `optics` definitions
+
+```
+# Migration script
+fd --type file -x sed -i -e 's/Database.Bloodhound.Internal.Client/Database.Bloodhound.Client.Cluster/g' {}
+fd --type file -x sed -i -e 's/Database.Bloodhound.Internal.Aggregation/Database.Bloodhound.Types/g' {}
+fd --type file -x sed -i -e 's/Database.Bloodhound.Internal.Analysis/Database.Bloodhound.Types/g' {}
+fd --type file -x sed -i -e 's/Database.Bloodhound.Internal.Highlight/Database.Bloodhound.Types/g' {}
+fd --type file -x sed -i -e 's/Database.Bloodhound.Internal.Newtypes/Database.Bloodhound.Types/g' {}
+fd --type file -x sed -i -e 's/Database.Bloodhound.Internal.Query/Database.Bloodhound.Types/g' {}
+fd --type file -x sed -i -e 's/Database.Bloodhound.Internal.Reindex/Database.Bloodhound.Types/g' {}
+fd --type file -x sed -i -e 's/Database.Bloodhound.Internal.Sort/Database.Bloodhound.Types/g' {}
+fd --type file -x sed -i -e '/Database.Bloodhound.Internal.StringlyTyped/g' {}
+fd --type file -x sed -i -e 's/Database.Bloodhound.Internal.Suggest/Database.Bloodhound.Types/g' {}
+fd --type file -x sed -i -e 's/Database.Bloodhound.Internal.Task/Database.Bloodhound.Types/g' {}
+```
+
+- @wireapp
+  - Implement updateByQuery
+  - Implement reindexing/tasks
+  - Add support for ngram and edge_ngram filters
+  - Add support for edge_ngram tokenizer
+  - Fix `CountShared` support ES 5.2
+- @robinp
+  - Add proper `BulkResponse` to `bulk` (#293)
+
+0.22.0.0
+========
+- @blackheaven
+  - Fix `EsError` for OpenSearch
+
 0.21.0.0
 ========
 - @blackheaven
